@@ -1,4 +1,4 @@
-import type { AppState, Category, ExpenseCategory } from './types'
+import type { AppState, Category, ExpenseCategory } from '../types'
 
 export const categories: Category[] = [
   'Food & Dishes',
