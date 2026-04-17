@@ -16,15 +16,39 @@ public class InventoryController : ControllerBase
         return Ok(items);
     }
 
-    // PUT /api/inventory/{id}/sale  ← replaces onRecordSale() in useAppState.ts
+    // PUT /api/inventory/{id}/sale
     [HttpPut("{id}/sale")]
     public async Task<IActionResult> RecordSale(string id, [FromBody] int quantity)
     {
         var item = await _db.InventoryItems.FindAsync(id);
         if (item == null) return NotFound();
 
-        item.InStock -= quantity;
+        item.InStock = Math.Max(0, item.InStock - quantity);
         item.DailySold += quantity;
+        await _db.SaveChangesAsync();
+        return Ok(item);
+    }
+
+    // PUT /api/inventory/{id}/restock
+    [HttpPut("{id}/restock")]
+    public async Task<IActionResult> Restock(string id, [FromBody] int quantity)
+    {
+        var item = await _db.InventoryItems.FindAsync(id);
+        if (item == null) return NotFound();
+
+        item.InStock += quantity;
+        await _db.SaveChangesAsync();
+        return Ok(item);
+    }
+
+    // PUT /api/inventory/{id}/stock
+    [HttpPut("{id}/stock")]
+    public async Task<IActionResult> SetStock(string id, [FromBody] int value)
+    {
+        var item = await _db.InventoryItems.FindAsync(id);
+        if (item == null) return NotFound();
+
+        item.InStock = Math.Max(0, value);
         await _db.SaveChangesAsync();
         return Ok(item);
     }

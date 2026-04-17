@@ -1,7 +1,8 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import type { AppState, Category, ExpenseCategory } from '../types'
+import type { AppState, Category, ExpenseCategory, InventoryItem } from '../types'
 import { categories, seedState } from '../data/data'
-import { storageKey, loadState } from '../utils/storage'
+
+const API = 'http://localhost:5213/api'
 
 type View = 'overview' | 'inventory' | 'deliveries' | 'expenses'
 export type CategoryFilter = Category | 'All'
@@ -23,7 +24,8 @@ interface ExpenseDraft {
 
 export function useAppState() {
   const [view, setView] = useState<View>('overview')
-  const [appState, setAppState] = useState<AppState>(loadState)
+  const [appState, setAppState] = useState<AppState>(structuredClone(seedState))
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All')
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({})
@@ -41,9 +43,20 @@ export function useAppState() {
     dueLabel: 'Today',
   })
 
+  // Load all data from the API on mount
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(appState))
-  }, [appState])
+    Promise.all([
+      fetch(`${API}/inventory`).then((r) => r.json()),
+      fetch(`${API}/deliveries`).then((r) => r.json()),
+      fetch(`${API}/expenses`).then((r) => r.json()),
+    ]).then(([inventory, deliveries, expenses]) => {
+      setAppState((prev) => ({ ...prev, inventory, deliveries, expenses }))
+      setLoading(false)
+    }).catch(() => {
+      // API unreachable — fall back to seed data
+      setLoading(false)
+    })
+  }, [])
 
   // ── Computed ───────────────────────────────────────────────────
   const grossSales = appState.inventory.reduce(
@@ -79,67 +92,77 @@ export function useAppState() {
   })
 
   // ── Actions ────────────────────────────────────────────────────
-  function updateStock(itemId: string, nextStock: number) {
+  function mergeInventoryItem(updated: InventoryItem) {
     setAppState((current) => ({
       ...current,
-      inventory: current.inventory.map((item) =>
-        item.id === itemId ? { ...item, inStock: Math.max(0, nextStock) } : item,
+      inventory: current.inventory.map((item) => (item.id === updated.id ? updated : item)),
+    }))
+  }
+
+  async function updateStock(itemId: string, nextStock: number) {
+    const updated = await fetch(`${API}/inventory/${itemId}/stock`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nextStock),
+    }).then((r) => r.json())
+    mergeInventoryItem(updated)
+  }
+
+  async function restockItem(itemId: string, amount: number) {
+    const updated = await fetch(`${API}/inventory/${itemId}/restock`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(amount),
+    }).then((r) => r.json())
+    mergeInventoryItem(updated)
+  }
+
+  async function recordSale(itemId: string, amount: number) {
+    const updated = await fetch(`${API}/inventory/${itemId}/sale`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(amount),
+    }).then((r) => r.json())
+    mergeInventoryItem(updated)
+  }
+
+  async function receiveDelivery(deliveryId: string) {
+    const result = await fetch(`${API}/deliveries/${deliveryId}/receive`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json())
+    // API returns { delivery, item } — update both in one state write
+    setAppState((current) => ({
+      ...current,
+      inventory: current.inventory.map((i) =>
+        i.id === result.item?.id ? result.item : i,
+      ),
+      deliveries: current.deliveries.map((d) =>
+        d.id === result.delivery.id ? result.delivery : d,
       ),
     }))
   }
 
-  function restockItem(itemId: string, amount: number) {
-    const item = appState.inventory.find((entry) => entry.id === itemId)
-    if (!item) return
-    updateStock(itemId, item.inStock + amount)
-  }
-
-  function recordSale(itemId: string, amount: number) {
-    setAppState((current) => ({
-      ...current,
-      inventory: current.inventory.map((item) => {
-        if (item.id !== itemId) return item
-        const soldUnits = Math.min(amount, item.inStock)
-        return { ...item, inStock: item.inStock - soldUnits, dailySold: item.dailySold + soldUnits }
-      }),
-    }))
-  }
-
-  function receiveDelivery(deliveryId: string) {
-    const delivery = appState.deliveries.find((entry) => entry.id === deliveryId)
-    if (!delivery || delivery.status === 'Received') return
-    setAppState((current) => ({
-      ...current,
-      inventory: current.inventory.map((item) =>
-        item.id === delivery.itemId
-          ? { ...item, inStock: item.inStock + delivery.quantity, lastDelivery: 'Just now' }
-          : item,
-      ),
-      deliveries: current.deliveries.map((entry) =>
-        entry.id === deliveryId ? { ...entry, status: 'Received' } : entry,
-      ),
-    }))
-  }
-
-  function addDelivery(event: FormEvent<HTMLFormElement>) {
+  async function addDelivery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const matchedItem = appState.inventory.find((item) => item.id === deliveryDraft.itemId)
     if (!matchedItem) return
+    const payload = {
+      supplier: deliveryDraft.supplier.trim() || matchedItem.supplier,
+      eta: deliveryDraft.eta.trim() || 'TBD',
+      itemId: matchedItem.id,
+      itemName: matchedItem.name,
+      quantity: Number(deliveryDraft.quantity) || 0,
+      unitCost: Number(deliveryDraft.unitCost) || matchedItem.costPrice,
+    }
+    const created = await fetch(`${API}/deliveries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json())
     setAppState((current) => ({
       ...current,
-      deliveries: [
-        {
-          id: crypto.randomUUID(),
-          supplier: deliveryDraft.supplier.trim() || matchedItem.supplier,
-          eta: deliveryDraft.eta.trim() || 'TBD',
-          itemId: matchedItem.id,
-          itemName: matchedItem.name,
-          quantity: Number(deliveryDraft.quantity) || 0,
-          unitCost: Number(deliveryDraft.unitCost) || matchedItem.costPrice,
-          status: 'Scheduled',
-        },
-        ...current.deliveries,
-      ],
+      deliveries: [created, ...current.deliveries],
     }))
     setDeliveryDraft((current) => ({
       ...current,
@@ -149,23 +172,25 @@ export function useAppState() {
     }))
   }
 
-  function addExpense(event: FormEvent<HTMLFormElement>) {
+  async function addExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmedName = expenseDraft.name.trim()
     if (!trimmedName) return
+    const payload = {
+      name: trimmedName,
+      amount: Number(expenseDraft.amount) || 0,
+      category: expenseDraft.category,
+      dueLabel: expenseDraft.dueLabel.trim() || 'Today',
+      recurring: false,
+    }
+    const created = await fetch(`${API}/expenses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json())
     setAppState((current) => ({
       ...current,
-      expenses: [
-        {
-          id: crypto.randomUUID(),
-          name: trimmedName,
-          amount: Number(expenseDraft.amount) || 0,
-          category: expenseDraft.category,
-          dueLabel: expenseDraft.dueLabel.trim() || 'Today',
-          recurring: false,
-        },
-        ...current.expenses,
-      ],
+      expenses: [created, ...current.expenses],
     }))
     setExpenseDraft({ name: '', amount: '0', category: 'Supplies', dueLabel: 'Today' })
   }
@@ -177,6 +202,7 @@ export function useAppState() {
 
   return {
     // Navigation
+    loading,
     view,
     setView,
     // Overview

@@ -8,6 +8,14 @@ import { ExpensesView } from './components/ExpensesView'
 function App() {
   const state = useAppState()
 
+  if (state.loading) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#70808d', fontSize: 15 }}>Connecting to API…</p>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
