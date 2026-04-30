@@ -1,6 +1,6 @@
 # System Management Stock
 
-React and TypeScript frontend for a stock-management dashboard using dummy data first, with the backend planned for a later .NET phase.
+React and TypeScript frontend with a .NET API backend for a stock-management dashboard.
 
 ## Current MVP
 
@@ -30,12 +30,51 @@ npm install
 npm run dev
 ```
 
+Backend:
+
+```bash
+cd backend
+dotnet run
+```
+
 ## Validation
 
 ```bash
 npm run build
 npm run lint
 ```
+
+Backend:
+
+```bash
+cd backend
+dotnet build
+```
+
+## Deployment
+
+### Frontend on Vercel
+
+- Framework preset: Vite
+- Root directory: project root
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variable: `VITE_API_BASE_URL=https://your-render-service.onrender.com/api`
+
+### Backend on Render
+
+- Service type: `Web Service`
+- Environment: `Docker`
+- Root directory: `backend`
+- Build command: leave blank when using Docker
+- Start command: leave blank when using Docker
+- Environment variable: `ASPNETCORE_ENVIRONMENT=Production`
+- Environment variable: `FrontendOrigin=https://your-vercel-project.vercel.app`
+- Environment variable: `ConnectionStrings__Default=Data Source=/var/data/stock.db`
+
+Render will build the API from `backend/Dockerfile`, which includes the .NET SDK and runtime needed for `net10.0`.
+
+If you keep SQLite on Render, attach a persistent disk mounted at `/var/data` so data survives restarts and redeploys.
 
 ## Next backend step
 

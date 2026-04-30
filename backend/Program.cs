@@ -2,14 +2,27 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = builder.Configuration.GetConnectionString("Default") ?? "Data Source=stock.db";
+var frontendOrigin = builder.Configuration["FrontendOrigin"];
+var allowedOrigins = new[]
+{
+    "http://localhost:5173",
+    "http://localhost:5213",
+    frontendOrigin
+}
+.Where(origin => !string.IsNullOrWhiteSpace(origin))
+.Select(origin => origin!)
+.Distinct()
+.ToArray();
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=stock.db"));
+    options.UseSqlite(connectionString));
 
 builder.Services.AddControllers();
 
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5213")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()));
 
@@ -19,6 +32,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    db.Database.Migrate();
 
     if (!db.InventoryItems.Any())
     {

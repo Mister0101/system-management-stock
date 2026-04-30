@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import type { AppState, Category, ExpenseCategory, InventoryItem } from '../types'
 import { categories, seedState } from '../data/data'
 
-const API = 'http://localhost:5213/api'
+const API = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5213/api').replace(/\/$/, '')
 
 type View = 'overview' | 'inventory' | 'deliveries' | 'expenses'
 export type CategoryFilter = Category | 'All'
