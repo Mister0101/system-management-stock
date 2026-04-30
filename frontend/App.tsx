@@ -81,7 +81,7 @@ function App() {
           <div className="topbar-actions">
             <div className="chip muted-chip">
               <ShieldCheck size={16} />
-              Dummy data mode
+              {state.apiConnected ? 'API connected' : 'Fallback data mode'}
             </div>
             <button className="icon-button" type="button">
               <Bell size={18} />

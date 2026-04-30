@@ -26,6 +26,7 @@ export function useAppState() {
   const [view, setView] = useState<View>('overview')
   const [appState, setAppState] = useState<AppState>(structuredClone(seedState))
   const [loading, setLoading] = useState(true)
+  const [apiConnected, setApiConnected] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('All')
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({})
@@ -51,9 +52,11 @@ export function useAppState() {
       fetch(`${API}/expenses`).then((r) => r.json()),
     ]).then(([inventory, deliveries, expenses]) => {
       setAppState((prev) => ({ ...prev, inventory, deliveries, expenses }))
+      setApiConnected(true)
       setLoading(false)
     }).catch(() => {
       // API unreachable — fall back to seed data
+      setApiConnected(false)
       setLoading(false)
     })
   }, [])
@@ -203,6 +206,7 @@ export function useAppState() {
   return {
     // Navigation
     loading,
+    apiConnected,
     view,
     setView,
     // Overview
